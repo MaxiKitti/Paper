@@ -1,0 +1,106 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Triassic <techbyteofficial9@gmail.com>
+Date: Fri, 22 Sep 2023 23:27:14 +0300
+Subject: [PATCH] Region format configuration
+
+
+diff --git a/src/main/java/dev/triassic/linearpaper/LinearConfig.java b/src/main/java/dev/triassic/linearpaper/LinearConfig.java
+index ad7400a1d200ff93c75d44d4c5b06cc4172d305b..96fae6a58b2f27fd344913b0a6c3456768dcb064 100644
+--- a/src/main/java/dev/triassic/linearpaper/LinearConfig.java
++++ b/src/main/java/dev/triassic/linearpaper/LinearConfig.java
+@@ -170,4 +170,17 @@ public class LinearConfig {
+         }
+         return builder.build();
+     }
++
++    public static int linearFlushFrequency = 10;
++    public static int linearFlushThreads = 1;
++
++    private static void linearSettings() {
++        linearFlushFrequency = getInt("linear.flush-frequency", linearFlushFrequency);
++        linearFlushThreads = getInt("linear.flush-max-threads", linearFlushThreads);
++
++        if (linearFlushThreads < 0)
++            linearFlushThreads = Math.max(Runtime.getRuntime().availableProcessors() + linearFlushThreads, 1);
++        else
++            linearFlushThreads = Math.max(linearFlushThreads, 1);
++    }
+ }
+diff --git a/src/main/java/dev/triassic/linearpaper/LinearWorldConfig.java b/src/main/java/dev/triassic/linearpaper/LinearWorldConfig.java
+index 562200dd06f5c30219746be01441a7de69c8757d..20091964e6dddd3b15a6134a2afbbe928d72b849 100644
+--- a/src/main/java/dev/triassic/linearpaper/LinearWorldConfig.java
++++ b/src/main/java/dev/triassic/linearpaper/LinearWorldConfig.java
+@@ -3,8 +3,10 @@ package dev.triassic.linearpaper;
+ import java.util.List;
+ import java.util.Map;
+ import java.util.function.Predicate;
++import java.util.logging.Level;
+ import org.apache.commons.lang.BooleanUtils;
+ import org.bukkit.configuration.ConfigurationSection;
++import dev.triassic.linearpaper.region.RegionFileFormat;
+ 
+ import static dev.triassic.linearpaper.LinearConfig.log;
+ 
+@@ -110,4 +112,23 @@ public class LinearWorldConfig {
+         final Map<String, Object> value = getMap("world-settings." + worldName + "." + path, null);
+         return value.isEmpty() ? fallback : value;
+     }
++
++    public RegionFileFormat regionFormat = RegionFileFormat.ANVIL;
++    public int linearCompressionLevel = 1;
++
++    private void regionFormatSettings() {
++        regionFormat = RegionFileFormat.fromString(getString("format", regionFormat.name()));
++        if (regionFormat.equals(RegionFileFormat.INVALID)) {
++            log(Level.SEVERE, "Unknown region format in linear.yml: " + regionFormat);
++            log(Level.SEVERE, "Falling back to ANVIL region file format.");
++            regionFormat = RegionFileFormat.ANVIL;
++        }
++
++        linearCompressionLevel = getInt("linear.compression-level", linearCompressionLevel);
++        if (linearCompressionLevel > 23 || linearCompressionLevel < 1) {
++            log(Level.SEVERE, "Linear region compression level should be between 1 and 22 in linear.yml: " + linearCompressionLevel);
++            log(Level.SEVERE, "Falling back to compression level 1.");
++            linearCompressionLevel = 1;
++        }
++    }
+ }
+diff --git a/src/main/java/dev/triassic/linearpaper/region/RegionFileFormat.java b/src/main/java/dev/triassic/linearpaper/region/RegionFileFormat.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..1285e3c410c9f6b5ed8c3ac11da60d1e1be4fe34
+--- /dev/null
++++ b/src/main/java/dev/triassic/linearpaper/region/RegionFileFormat.java
+@@ -0,0 +1,16 @@
++package dev.triassic.linearpaper.region;
++
++public enum RegionFileFormat {
++    ANVIL,
++    LINEAR,
++    INVALID;
++
++    public static RegionFileFormat fromString(String format) {
++        for (RegionFileFormat rff : values()) {
++            if (rff.name().equalsIgnoreCase(format)) {
++                return rff;
++            }
++        }
++        return RegionFileFormat.INVALID;
++    }
++}
+diff --git a/src/main/java/net/minecraft/server/MinecraftServer.java b/src/main/java/net/minecraft/server/MinecraftServer.java
+index 696d075ca2883f3c37e35f983c4d020e5db89d16..f75e1e6e3d68e4156fd9723aa96dba4e890b07cb 100644
+--- a/src/main/java/net/minecraft/server/MinecraftServer.java
++++ b/src/main/java/net/minecraft/server/MinecraftServer.java
+@@ -980,10 +980,10 @@ public abstract class MinecraftServer extends ReentrantBlockableEventLoop<TickTa
+             while (iterator1.hasNext()) {
+                 ServerLevel worldserver2 = (ServerLevel) iterator1.next();
+ 
+-                MinecraftServer.LOGGER.info("ThreadedAnvilChunkStorage ({}): All chunks are saved", worldserver2.getChunkSource().chunkMap.getStorageName());
++                MinecraftServer.LOGGER.info("ThreadedChunkStorage ({}): All chunks are saved", worldserver2.getChunkSource().chunkMap.getStorageName()); // LinearPaper
+             }
+ 
+-            MinecraftServer.LOGGER.info("ThreadedAnvilChunkStorage: All dimensions are saved");
++            MinecraftServer.LOGGER.info("ThreadedChunkStorage: All dimensions are saved"); // LinearPaper
+         }
+ 
+         return flag3;
